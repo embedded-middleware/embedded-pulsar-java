@@ -85,16 +85,22 @@ public class EmbeddedPulsarServer {
 
     public void start() throws Exception {
         this.pulsarStandalone.start();
-        long start = System.currentTimeMillis();
+        long start = System.nanoTime();
+        PulsarAdmin admin = null;
         while (true) {
             try {
-                healthcheck();
+                admin = createPulsarAdmin();
+                admin.brokers().healthcheck(TopicVersion.V1);
                 log.info("started pulsar");
+                admin.close();
                 break;
             } catch (Exception e) {
-                if (System.currentTimeMillis() - start > 3*60_000) {
+                if (System.nanoTime() - start > TimeUnit.MINUTES.toNanos(3)) {
                     log.error("start pulsar timeout, stopping pulsar");
                     this.pulsarStandalone.close();
+                    if (admin != null) {
+                        admin.close();
+                    }
                     break;
                 }
                 log.info("starting pulsar....");
@@ -103,14 +109,8 @@ public class EmbeddedPulsarServer {
         }
     }
 
-    private void healthcheck() throws Exception {
-        try (PulsarAdmin admin = getDefaultPulsarAdmin()) {
-            admin.brokers().healthcheck(TopicVersion.V1);
-        }
-    }
-
-    public PulsarAdmin getDefaultPulsarAdmin() throws PulsarClientException {
-        return PulsarAdmin.builder().serviceHttpUrl("http://locahost:" + this.webPort).build();
+    public PulsarAdmin createPulsarAdmin() throws PulsarClientException {
+        return PulsarAdmin.builder().serviceHttpUrl("http://localhost:" + this.webPort).build();
     }
 
     public int getWebPort() {
