@@ -5,11 +5,15 @@ import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.pulsar.PulsarStandalone;
 import org.apache.pulsar.PulsarStandaloneBuilder;
 import org.apache.pulsar.broker.ServiceConfiguration;
+import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.common.naming.TopicVersion;
 import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 import org.assertj.core.util.Files;
 
 import java.io.File;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class EmbeddedPulsarServer {
@@ -69,6 +73,9 @@ public class EmbeddedPulsarServer {
             standaloneConfig.setManagedLedgerDefaultEnsembleSize(1);
             standaloneConfig.setManagedLedgerDefaultWriteQuorum(1);
             standaloneConfig.setManagedLedgerDefaultAckQuorum(1);
+            standaloneConfig.setAllowAutoTopicCreation(embeddedPulsarConfig.isAllowAutoTopicCreation());
+            standaloneConfig.setAllowAutoTopicCreationType(embeddedPulsarConfig.getAutoTopicCreationType());
+            standaloneConfig.setDefaultNumPartitions(embeddedPulsarConfig.getAutoCreateTopicPartitionNum());
             this.pulsarStandalone.setConfig(standaloneConfig);
         } catch (Throwable e) {
             log.error("exception is ", e);
@@ -78,6 +85,32 @@ public class EmbeddedPulsarServer {
 
     public void start() throws Exception {
         this.pulsarStandalone.start();
+        long start = System.nanoTime();
+        PulsarAdmin admin = null;
+        while (true) {
+            try {
+                admin = createPulsarAdmin();
+                admin.brokers().healthcheck(TopicVersion.V1);
+                log.info("started pulsar");
+                admin.close();
+                break;
+            } catch (Exception e) {
+                if (System.nanoTime() - start > TimeUnit.MINUTES.toNanos(3)) {
+                    log.error("start pulsar timeout, stopping pulsar");
+                    this.pulsarStandalone.close();
+                    if (admin != null) {
+                        admin.close();
+                    }
+                    break;
+                }
+                log.info("starting pulsar....");
+                TimeUnit.SECONDS.sleep(10);
+            }
+        }
+    }
+
+    public PulsarAdmin createPulsarAdmin() throws PulsarClientException {
+        return PulsarAdmin.builder().serviceHttpUrl("http://localhost:" + this.webPort).build();
     }
 
     public int getWebPort() {
