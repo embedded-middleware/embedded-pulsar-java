@@ -19,6 +19,7 @@
         <src.dir>src/main/java</src.dir>
         <!-- dependency -->
         <assertj.version>3.23.1</assertj.version>
+        <jackson.version>2.13.4</jackson.version>
         <junit.version>5.9.1</junit.version>
         <lombok.version>1.18.24</lombok.version>
         <pulsar.version>2.10.0</pulsar.version>

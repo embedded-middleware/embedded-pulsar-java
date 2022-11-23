@@ -1,17 +1,24 @@
 package io.github.embedded.pulsar.core;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.pulsar.PulsarStandalone;
 import org.apache.pulsar.PulsarStandaloneBuilder;
 import org.apache.pulsar.broker.ServiceConfiguration;
 import org.apache.pulsar.client.admin.PulsarAdmin;
+import org.apache.pulsar.client.admin.PulsarAdminBuilder;
+import org.apache.pulsar.client.api.Authentication;
+import org.apache.pulsar.client.api.AuthenticationFactory;
 import org.apache.pulsar.client.api.PulsarClientException;
+import org.apache.pulsar.client.impl.auth.AuthenticationKeyStoreTls;
 import org.apache.pulsar.common.naming.TopicVersion;
 import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
 import org.assertj.core.util.Files;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -32,11 +39,14 @@ public class EmbeddedPulsarServer {
 
     private final PulsarStandalone pulsarStandalone;
 
+    private final EmbeddedPulsarConfig embeddedPulsarConfig;
+
     public EmbeddedPulsarServer() {
         this(new EmbeddedPulsarConfig());
     }
 
     public EmbeddedPulsarServer(EmbeddedPulsarConfig embeddedPulsarConfig) {
+        this.embeddedPulsarConfig = embeddedPulsarConfig;
         try {
             this.bkDir = Files.newTemporaryFolder();
             this.bkDir.deleteOnExit();
@@ -68,14 +78,33 @@ public class EmbeddedPulsarServer {
                     .withOnlyBroker(true)
                     .build();
             ServiceConfiguration standaloneConfig = this.pulsarStandalone.getConfig();
-            standaloneConfig.setWebServicePort(Optional.of(webPort));
-            standaloneConfig.setBrokerServicePort(Optional.of(tcpPort));
             standaloneConfig.setManagedLedgerDefaultEnsembleSize(1);
             standaloneConfig.setManagedLedgerDefaultWriteQuorum(1);
             standaloneConfig.setManagedLedgerDefaultAckQuorum(1);
             standaloneConfig.setAllowAutoTopicCreation(embeddedPulsarConfig.isAllowAutoTopicCreation());
             standaloneConfig.setAllowAutoTopicCreationType(embeddedPulsarConfig.getAutoTopicCreationType());
             standaloneConfig.setDefaultNumPartitions(embeddedPulsarConfig.getAutoCreateTopicPartitionNum());
+            if (embeddedPulsarConfig.isEnableTls()) {
+                standaloneConfig.setAuthenticationEnabled(embeddedPulsarConfig.isEnableTls());
+                standaloneConfig.setWebServicePortTls(Optional.of(webPort));
+                standaloneConfig.setBrokerServicePort(Optional.of(tcpPort));
+                standaloneConfig.setTlsEnabledWithKeyStore(true);
+                standaloneConfig.setTlsKeyStore(embeddedPulsarConfig.getServerKeyStorePath());
+                standaloneConfig.setTlsKeyStorePassword(embeddedPulsarConfig.getServerKeyStorePassword());
+                standaloneConfig.setTlsTrustStore(embeddedPulsarConfig.getServerTrustStorePath());
+                standaloneConfig.setTlsTrustStorePassword(embeddedPulsarConfig.getServerTrustStorePassword());
+                Map<String, String> map = new HashMap<>();
+                map.put("keyStoreType", "JKS");
+                map.put("keyStorePath", embeddedPulsarConfig.getClientKeyStorePath());
+                map.put("keyStorePassword", embeddedPulsarConfig.getClientKeyStorePassword());
+                standaloneConfig.setBrokerClientAuthenticationParameters(new ObjectMapper().writeValueAsString(map));
+                standaloneConfig.setBrokerClientAuthenticationPlugin(AuthenticationKeyStoreTls.class.getName());
+                standaloneConfig.setBrokerClientTlsTrustStore(embeddedPulsarConfig.getClientTrustStorePath());
+                standaloneConfig.setBrokerClientTlsTrustStorePassword(embeddedPulsarConfig.getClientTrustStorePassword());
+            } else {
+                standaloneConfig.setWebServicePort(Optional.of(webPort));
+                standaloneConfig.setBrokerServicePort(Optional.of(tcpPort));
+            }
             this.pulsarStandalone.setConfig(standaloneConfig);
         } catch (Throwable e) {
             log.error("exception is ", e);
@@ -110,7 +139,23 @@ public class EmbeddedPulsarServer {
     }
 
     public PulsarAdmin createPulsarAdmin() throws PulsarClientException {
-        return PulsarAdmin.builder().serviceHttpUrl("http://localhost:" + this.webPort).build();
+        PulsarAdminBuilder builder = PulsarAdmin.builder();
+        String serviceHttpUrl;
+        if (embeddedPulsarConfig.isEnableTls()) {
+            serviceHttpUrl = "https://localhost:" + this.webPort;
+            Map<String, String> map = new HashMap<>();
+            map.put("keyStoreType", "JKS");
+            map.put("keyStorePath", embeddedPulsarConfig.getClientKeyStorePath());
+            map.put("keyStorePassword", embeddedPulsarConfig.getClientKeyStorePassword());
+            Authentication authentication = AuthenticationFactory
+                    .create(AuthenticationKeyStoreTls.class.getName(), map);
+            builder.allowTlsInsecureConnection(true);
+            builder.enableTlsHostnameVerification(false);
+            builder.authentication(authentication);
+        } else {
+            serviceHttpUrl = "http://localhost:" + this.webPort;
+        }
+        return builder.serviceHttpUrl(serviceHttpUrl).build();
     }
 
     public int getWebPort() {
