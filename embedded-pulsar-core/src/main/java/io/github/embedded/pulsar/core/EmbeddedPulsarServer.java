@@ -78,6 +78,7 @@ public class EmbeddedPulsarServer {
                     .withOnlyBroker(true)
                     .build();
             ServiceConfiguration standaloneConfig = this.pulsarStandalone.getConfig();
+            standaloneConfig.setMetadataStoreUrl("zk:localhost:" + zkPort);
             standaloneConfig.setManagedLedgerDefaultEnsembleSize(1);
             standaloneConfig.setManagedLedgerDefaultWriteQuorum(1);
             standaloneConfig.setManagedLedgerDefaultAckQuorum(1);
@@ -100,7 +101,8 @@ public class EmbeddedPulsarServer {
                 standaloneConfig.setBrokerClientAuthenticationParameters(new ObjectMapper().writeValueAsString(map));
                 standaloneConfig.setBrokerClientAuthenticationPlugin(AuthenticationKeyStoreTls.class.getName());
                 standaloneConfig.setBrokerClientTlsTrustStore(embeddedPulsarConfig.getClientTrustStorePath());
-                standaloneConfig.setBrokerClientTlsTrustStorePassword(embeddedPulsarConfig.getClientTrustStorePassword());
+                String clientTrustStorePassword = embeddedPulsarConfig.getClientTrustStorePassword();
+                standaloneConfig.setBrokerClientTlsTrustStorePassword(clientTrustStorePassword);
             } else {
                 standaloneConfig.setWebServicePort(Optional.of(webPort));
                 standaloneConfig.setBrokerServicePort(Optional.of(tcpPort));
@@ -132,7 +134,7 @@ public class EmbeddedPulsarServer {
                     }
                     break;
                 }
-                log.info("starting pulsar....");
+                log.info("starting pulsar.... exception is ", e);
                 TimeUnit.SECONDS.sleep(10);
             }
         }
