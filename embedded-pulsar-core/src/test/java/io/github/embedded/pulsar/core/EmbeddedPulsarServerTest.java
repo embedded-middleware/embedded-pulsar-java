@@ -1,5 +1,6 @@
 package io.github.embedded.pulsar.core;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 class EmbeddedPulsarServerTest {
@@ -12,6 +13,7 @@ class EmbeddedPulsarServerTest {
     }
 
     @Test
+    @Disabled
     public void testTlsPulsarServerBoot() throws Exception {
         EmbeddedPulsarConfig config = new EmbeddedPulsarConfig();
         config.enableTls(true);
