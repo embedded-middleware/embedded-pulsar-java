@@ -13,7 +13,6 @@ class EmbeddedPulsarServerTest {
     }
 
     @Test
-    @Disabled
     public void testTlsPulsarServerBoot() throws Exception {
         EmbeddedPulsarConfig config = new EmbeddedPulsarConfig();
         config.enableTls(true);

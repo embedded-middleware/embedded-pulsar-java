@@ -101,6 +101,7 @@ public class EmbeddedPulsarServer {
                 standaloneConfig.setBrokerClientAuthenticationParameters(new ObjectMapper().writeValueAsString(map));
                 standaloneConfig.setBrokerClientAuthenticationPlugin(AuthenticationKeyStoreTls.class.getName());
                 standaloneConfig.setBrokerClientTlsTrustStore(embeddedPulsarConfig.getClientTrustStorePath());
+                standaloneConfig.setAuthenticationEnabled(false);
                 String clientTrustStorePassword = embeddedPulsarConfig.getClientTrustStorePassword();
                 standaloneConfig.setBrokerClientTlsTrustStorePassword(clientTrustStorePassword);
             } else {
@@ -154,6 +155,7 @@ public class EmbeddedPulsarServer {
             builder.allowTlsInsecureConnection(true);
             builder.enableTlsHostnameVerification(false);
             builder.authentication(authentication);
+            builder.useKeyStoreTls(true);
         } else {
             serviceHttpUrl = "http://localhost:" + this.webPort;
         }
