@@ -6,7 +6,7 @@
 
     <groupId>io.github.embedded-middleware</groupId>
     <artifactId>embedded-pulsar-parent</artifactId>
-    <version>0.0.4</version>
+    <version>0.0.5</version>
     <modules>
         <module>embedded-pulsar-core</module>
     </modules>
@@ -67,6 +67,7 @@
                     <suppressionsLocation>./ci/checkstyle/suppressions.xml</suppressionsLocation>
                     <includeTestSourceDirectory>true</includeTestSourceDirectory>
                     <inputEncoding>UTF-8</inputEncoding>
+                    <outputEncoding>UTF-8</outputEncoding>
                     <excludes>**/proto/*</excludes>
                 </configuration>
             </plugin>
