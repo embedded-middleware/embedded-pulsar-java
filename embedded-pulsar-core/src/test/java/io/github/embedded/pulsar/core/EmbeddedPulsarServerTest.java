@@ -15,14 +15,14 @@ class EmbeddedPulsarServerTest {
     public void testTlsPulsarServerBoot() throws Exception {
         EmbeddedPulsarConfig config = new EmbeddedPulsarConfig();
         config.enableTls(true);
-        config.serverKeyStorePath(this.getClass().getClassLoader().getResource("server.keystore.jks").getPath());
-        config.serverKeyStorePassword("111111");
-        config.serverTrustStorePath(this.getClass().getClassLoader().getResource("server.truststore.jks").getPath());
-        config.serverTrustStorePassword("111111");
-        config.clientKeyStorePath(this.getClass().getClassLoader().getResource("client.keystore.jks").getPath());
-        config.clientKeyStorePassword("111111");
-        config.clientTrustStorePath(this.getClass().getClassLoader().getResource("client.truststore.jks").getPath());
-        config.clientTrustStorePassword("111111");
+        config.serverKeyStorePath(this.getClass().getClassLoader().getResource("pulsar_server_key.jks").getPath());
+        config.serverKeyStorePassword("pulsar_server_pwd");
+        config.serverTrustStorePath(this.getClass().getClassLoader().getResource("pulsar_server_trust.jks").getPath());
+        config.serverTrustStorePassword("pulsar_server_pwd");
+        config.clientKeyStorePath(this.getClass().getClassLoader().getResource("pulsar_client_key.jks").getPath());
+        config.clientKeyStorePassword("pulsar_client_pwd");
+        config.clientTrustStorePath(this.getClass().getClassLoader().getResource("pulsar_client_trust.jks").getPath());
+        config.clientTrustStorePassword("pulsar_client_pwd");
         EmbeddedPulsarServer server = new EmbeddedPulsarServer(config);
         server.start();
         server.close();
