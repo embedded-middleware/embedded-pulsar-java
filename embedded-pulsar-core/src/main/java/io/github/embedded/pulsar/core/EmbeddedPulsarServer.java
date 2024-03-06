@@ -12,6 +12,9 @@ import io.vertx.ext.web.handler.BodyHandler;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Slf4j
 public class EmbeddedPulsarServer {
 
@@ -74,11 +77,12 @@ public class EmbeddedPulsarServer {
         router.get("/admin/v2/namespaces/:tenant").handler(this::handleGetTenantNamespaces);
         router.put("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
                 .handler(this::handleCreatePartitionedTopic);
-        router.get("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
-                .handler(this::handleGetPartitionedTopicInfo);
         router.delete("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
                 .handler(this::handleDeletePartitionedTopic);
-
+        router.get("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
+                .handler(this::handleGetPartitionedTopicInfo);
+        router.get("/admin/v2/persistent/:tenant/:namespace/partitions")
+                .handler(this::handleGetAllPartitionedTopics);
 
 
         httpServer.requestHandler(router).listen(httpPort, res -> {
@@ -155,6 +159,16 @@ public class EmbeddedPulsarServer {
         }
     }
 
+
+    public void handleGetAllPartitionedTopics(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        String namespace = context.pathParam("namespace");
+        List<PartitionedTopicInfo> partitionedTopics = pulsarEngine.getAllPartitionedTopics(tenant, namespace);
+        if (partitionedTopics == null) {
+            partitionedTopics = new ArrayList<>();
+        }
+        context.response().setStatusCode(200).end(Json.encode(partitionedTopics));
+    }
 
     public void close() throws Exception {
         if (netServer != null) {

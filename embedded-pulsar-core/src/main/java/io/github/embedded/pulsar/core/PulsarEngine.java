@@ -94,4 +94,17 @@ public class PulsarEngine {
         }
         return null;
     }
+
+    public List<PartitionedTopicInfo> getAllPartitionedTopics(String tenant, String namespace) {
+        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces =
+                partitionedTopics.get(tenant);
+        if (tenantNamespaces != null) {
+            ConcurrentHashMap<String, PartitionedTopicInfo> namespaceTopics = tenantNamespaces.get(namespace);
+            if (namespaceTopics != null) {
+                return new ArrayList<>(namespaceTopics.values());
+            }
+        }
+        return Collections.emptyList();
+    }
+
 }
