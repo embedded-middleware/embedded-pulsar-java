@@ -3,6 +3,7 @@ package io.github.embedded.pulsar.core;
 import io.github.embedded.pulsar.core.module.NamespaceInfo;
 import io.github.embedded.pulsar.core.module.PartitionedTopicInfo;
 import io.github.embedded.pulsar.core.module.TenantInfo;
+import io.github.embedded.pulsar.core.module.TopicInfo;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,6 +15,10 @@ public class PulsarEngine {
     private final ConcurrentHashMap<String, TenantInfo> tenants = new ConcurrentHashMap<>();
 
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, NamespaceInfo>> namespaces =
+            new ConcurrentHashMap<>();
+
+    private final ConcurrentHashMap<String,
+            ConcurrentHashMap<String, ConcurrentHashMap<String, TopicInfo>>> topics =
             new ConcurrentHashMap<>();
 
     private final ConcurrentHashMap<String,
@@ -56,6 +61,16 @@ public class PulsarEngine {
         return tenantNamespaces == null ? Collections.emptyList() : new ArrayList<>(tenantNamespaces.keySet());
     }
 
+    public List<String> getTopics(String tenant, String namespace) {
+        ConcurrentHashMap<String, ConcurrentHashMap<String, TopicInfo>> tenantNamespaces =
+                topics.get(tenant);
+        if (tenantNamespaces != null) {
+            ConcurrentHashMap<String, TopicInfo> namespaceTopics = tenantNamespaces.get(namespace);
+            return namespaceTopics == null ? Collections.emptyList() : new ArrayList<>(namespaceTopics.keySet());
+        }
+        return Collections.emptyList();
+    }
+
     public void createPartitionedTopic(String tenant, String namespace, String topic, int numPartitions) {
         partitionedTopics.computeIfAbsent(tenant, k -> new ConcurrentHashMap<>())
                 .computeIfAbsent(namespace, k -> new ConcurrentHashMap<>())
@@ -94,17 +109,4 @@ public class PulsarEngine {
         }
         return null;
     }
-
-    public List<PartitionedTopicInfo> getAllPartitionedTopics(String tenant, String namespace) {
-        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces =
-                partitionedTopics.get(tenant);
-        if (tenantNamespaces != null) {
-            ConcurrentHashMap<String, PartitionedTopicInfo> namespaceTopics = tenantNamespaces.get(namespace);
-            if (namespaceTopics != null) {
-                return new ArrayList<>(namespaceTopics.values());
-            }
-        }
-        return Collections.emptyList();
-    }
-
 }

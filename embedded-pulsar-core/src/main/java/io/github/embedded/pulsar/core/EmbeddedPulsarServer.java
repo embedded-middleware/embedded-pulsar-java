@@ -163,7 +163,7 @@ public class EmbeddedPulsarServer {
     public void handleGetAllPartitionedTopics(RoutingContext context) {
         String tenant = context.pathParam("tenant");
         String namespace = context.pathParam("namespace");
-        List<PartitionedTopicInfo> partitionedTopics = pulsarEngine.getAllPartitionedTopics(tenant, namespace);
+        List<String> partitionedTopics = pulsarEngine.getPartitionedTopics(tenant, namespace);
         if (partitionedTopics == null) {
             partitionedTopics = new ArrayList<>();
         }
