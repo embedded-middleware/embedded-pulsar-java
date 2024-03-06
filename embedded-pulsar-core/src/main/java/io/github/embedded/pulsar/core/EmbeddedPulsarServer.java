@@ -1,176 +1,180 @@
 package io.github.embedded.pulsar.core;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.embedded.pulsar.core.module.PartitionedTopicInfo;
+import io.github.embedded.pulsar.core.module.TenantInfo;
+import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.json.Json;
+import io.vertx.core.net.NetServer;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.bookkeeper.conf.ServerConfiguration;
-import org.apache.pulsar.PulsarStandalone;
-import org.apache.pulsar.PulsarStandaloneBuilder;
-import org.apache.pulsar.broker.ServiceConfiguration;
-import org.apache.pulsar.client.admin.PulsarAdmin;
-import org.apache.pulsar.client.admin.PulsarAdminBuilder;
-import org.apache.pulsar.client.api.Authentication;
-import org.apache.pulsar.client.api.AuthenticationFactory;
-import org.apache.pulsar.client.api.PulsarClientException;
-import org.apache.pulsar.client.impl.auth.AuthenticationKeyStoreTls;
-import org.apache.pulsar.common.naming.TopicVersion;
-import org.apache.pulsar.zookeeper.LocalBookkeeperEnsemble;
-import org.assertj.core.util.Files;
-
-import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class EmbeddedPulsarServer {
 
-    private final File bkDir;
+    private final Vertx vertx = Vertx.vertx();
 
-    private final int bkPort;
+    private final EmbeddedPulsarConfig config;
 
-    private final File zkDir;
-
-    private final int zkPort;
-
-    private final int webPort;
-
+    @Getter
     private final int tcpPort;
 
-    private final PulsarStandalone pulsarStandalone;
+    @Getter
+    private final int httpPort;
 
-    private final EmbeddedPulsarConfig embeddedPulsarConfig;
+    private final PulsarEngine pulsarEngine;
 
-    public EmbeddedPulsarServer() {
+    private NetServer netServer;
+
+    private HttpServer httpServer;
+
+    public EmbeddedPulsarServer() throws Exception {
         this(new EmbeddedPulsarConfig());
     }
 
-    public EmbeddedPulsarServer(EmbeddedPulsarConfig embeddedPulsarConfig) {
-        this.embeddedPulsarConfig = embeddedPulsarConfig;
-        try {
-            this.bkDir = Files.newTemporaryFolder();
-            this.bkDir.deleteOnExit();
-            if (embeddedPulsarConfig.getBkPort() == 0) {
-                this.bkPort = SocketUtil.getFreePort();
-            } else {
-                this.bkPort = embeddedPulsarConfig.getBkPort();
-            }
-            this.zkDir = Files.newTemporaryFolder();
-            this.zkDir.deleteOnExit();
-            if (embeddedPulsarConfig.getZkPort() == 0) {
-                this.zkPort = SocketUtil.getFreePort();
-            } else {
-                this.zkPort = embeddedPulsarConfig.getZkPort();
-            }
-            LocalBookkeeperEnsemble bkEnsemble = new LocalBookkeeperEnsemble(
-                    1, zkPort, bkPort, zkDir.toString(),
-                    bkDir.toString(), false, "127.0.0.1");
-            ServerConfiguration bkConf = new ServerConfiguration();
-            bkConf.setJournalRemovePagesFromCache(false);
-            log.info("begin to start bookkeeper");
-            bkEnsemble.startStandalone(bkConf, false);
-            this.webPort = SocketUtil.getFreePort();
+    public EmbeddedPulsarServer(EmbeddedPulsarConfig config) throws Exception {
+        this.config = config;
+        if (config.getTcpPort() == 0) {
             this.tcpPort = SocketUtil.getFreePort();
-            this.pulsarStandalone = PulsarStandaloneBuilder
-                    .instance()
-                    .withZkPort(zkPort)
-                    .withNumOfBk(1)
-                    .withOnlyBroker(true)
-                    .build();
-            ServiceConfiguration standaloneConfig = this.pulsarStandalone.getConfig();
-            standaloneConfig.setMetadataStoreUrl("zk:localhost:" + zkPort);
-            standaloneConfig.setManagedLedgerDefaultEnsembleSize(1);
-            standaloneConfig.setManagedLedgerDefaultWriteQuorum(1);
-            standaloneConfig.setManagedLedgerDefaultAckQuorum(1);
-            standaloneConfig.setAllowAutoTopicCreation(embeddedPulsarConfig.isAllowAutoTopicCreation());
-            standaloneConfig.setAllowAutoTopicCreationType(embeddedPulsarConfig.getAutoTopicCreationType());
-            standaloneConfig.setDefaultNumPartitions(embeddedPulsarConfig.getAutoCreateTopicPartitionNum());
-            if (embeddedPulsarConfig.isEnableTls()) {
-                standaloneConfig.setAuthenticationEnabled(embeddedPulsarConfig.isEnableTls());
-                standaloneConfig.setWebServicePortTls(Optional.of(webPort));
-                standaloneConfig.setBrokerServicePort(Optional.of(tcpPort));
-                standaloneConfig.setTlsEnabledWithKeyStore(true);
-                standaloneConfig.setTlsKeyStore(embeddedPulsarConfig.getServerKeyStorePath());
-                standaloneConfig.setTlsKeyStorePassword(embeddedPulsarConfig.getServerKeyStorePassword());
-                standaloneConfig.setTlsTrustStore(embeddedPulsarConfig.getServerTrustStorePath());
-                standaloneConfig.setTlsTrustStorePassword(embeddedPulsarConfig.getServerTrustStorePassword());
-                Map<String, String> map = new HashMap<>();
-                map.put("keyStoreType", "JKS");
-                map.put("keyStorePath", embeddedPulsarConfig.getClientKeyStorePath());
-                map.put("keyStorePassword", embeddedPulsarConfig.getClientKeyStorePassword());
-                standaloneConfig.setBrokerClientAuthenticationParameters(new ObjectMapper().writeValueAsString(map));
-                standaloneConfig.setBrokerClientAuthenticationPlugin(AuthenticationKeyStoreTls.class.getName());
-                standaloneConfig.setBrokerClientTlsTrustStore(embeddedPulsarConfig.getClientTrustStorePath());
-                standaloneConfig.setAuthenticationEnabled(false);
-                String clientTrustStorePassword = embeddedPulsarConfig.getClientTrustStorePassword();
-                standaloneConfig.setBrokerClientTlsTrustStorePassword(clientTrustStorePassword);
-            } else {
-                standaloneConfig.setWebServicePort(Optional.of(webPort));
-                standaloneConfig.setBrokerServicePort(Optional.of(tcpPort));
-            }
-            this.pulsarStandalone.setConfig(standaloneConfig);
-        } catch (Throwable e) {
-            log.error("exception is ", e);
-            throw new IllegalStateException("start pulsar standalone failed");
+        } else {
+            this.tcpPort = config.getTcpPort();
         }
+        if (config.getHttpPort() == 0) {
+            this.httpPort = SocketUtil.getFreePort();
+        } else {
+            this.httpPort = config.getHttpPort();
+        }
+        this.pulsarEngine = new PulsarEngine();
     }
 
     public void start() throws Exception {
-        this.pulsarStandalone.start();
-        long start = System.nanoTime();
-        PulsarAdmin admin = null;
-        while (true) {
-            try {
-                admin = createPulsarAdmin();
-                admin.brokers().healthcheck(TopicVersion.V1);
-                log.info("started pulsar");
-                admin.close();
-                break;
-            } catch (Exception e) {
-                if (System.nanoTime() - start > TimeUnit.MINUTES.toNanos(3)) {
-                    log.error("start pulsar timeout, stopping pulsar");
-                    this.pulsarStandalone.close();
-                    if (admin != null) {
-                        admin.close();
-                    }
-                    break;
-                }
-                log.info("starting pulsar.... exception is ", e);
-                TimeUnit.SECONDS.sleep(10);
+        netServer = vertx.createNetServer();
+        netServer.connectHandler(socket -> {
+        });
+        netServer.listen(tcpPort, res -> {
+            if (res.succeeded()) {
+                log.info("Embedded Pulsar TCP server started on port {}", tcpPort);
+            } else {
+                log.error("Failed to start Embedded Pulsar TCP server", res.cause());
             }
-        }
-    }
+        });
 
-    public PulsarAdmin createPulsarAdmin() throws PulsarClientException {
-        PulsarAdminBuilder builder = PulsarAdmin.builder();
-        String serviceHttpUrl;
-        if (embeddedPulsarConfig.isEnableTls()) {
-            serviceHttpUrl = "https://localhost:" + this.webPort;
-            Map<String, String> map = new HashMap<>();
-            map.put("keyStoreType", "JKS");
-            map.put("keyStorePath", embeddedPulsarConfig.getClientKeyStorePath());
-            map.put("keyStorePassword", embeddedPulsarConfig.getClientKeyStorePassword());
-            Authentication authentication = AuthenticationFactory
-                    .create(AuthenticationKeyStoreTls.class.getName(), map);
-            builder.allowTlsInsecureConnection(true);
-            builder.enableTlsHostnameVerification(false);
-            builder.authentication(authentication);
-            builder.useKeyStoreTls(true);
-        } else {
-            serviceHttpUrl = "http://localhost:" + this.webPort;
-        }
-        return builder.serviceHttpUrl(serviceHttpUrl).build();
-    }
+        httpServer = vertx.createHttpServer();
+        httpServer.requestHandler(req -> {
+            String[] pathSegments = req.path().substring(1).split("/");
 
-    public int getWebPort() {
-        return webPort;
-    }
-
-    public int getTcpPort() {
-        return tcpPort;
+            if (pathSegments.length > 0 && "tenants".equals(pathSegments[0])) {
+                if (pathSegments.length == 1) {
+                    if (req.method() == HttpMethod.GET) {
+                        req.response().setStatusCode(200).end(Json.encode(pulsarEngine.getTenants()));
+                    } else {
+                        req.response().setStatusCode(405).end("Method Not Allowed");
+                    }
+                }
+                else if (pathSegments.length == 2) {
+                    String tenant = pathSegments[1];
+                    HttpMethod method = req.method();
+                    if (method.equals(HttpMethod.POST)) {
+                        req.bodyHandler(buffer -> {
+                            TenantInfo tenantInfo = Json.decodeValue(buffer, TenantInfo.class);
+                            pulsarEngine.createTenant(tenant, tenantInfo);
+                            req.response().setStatusCode(201).end("Tenant created");
+                        });
+                    } else if (method.equals(HttpMethod.DELETE)) {
+                        pulsarEngine.deleteTenant(tenant);
+                        req.response().setStatusCode(204).end();
+                    } else if (method.equals(HttpMethod.GET)) {
+                        TenantInfo tenantInfo = pulsarEngine.getTenantInfo(tenant);
+                        if (tenantInfo != null) {
+                            req.response().setStatusCode(200).end(Json.encode(tenantInfo));
+                        } else {
+                            req.response().setStatusCode(404).end("Tenant not found");
+                        }
+                    } else {
+                        req.response().setStatusCode(405).end("Method Not Allowed");
+                    }
+                } else {
+                    req.response().setStatusCode(404).end("Not Found");
+                }
+            } else if ("namespaces".equals(pathSegments[0])) {
+                if (pathSegments.length == 2) {
+                    String tenant = pathSegments[1];
+                    if (req.method() == HttpMethod.GET) {
+                        req.response().setStatusCode(200).end(Json.encode(pulsarEngine.getTenantNamespaces(tenant)));
+                    } else {
+                        req.response().setStatusCode(405).end("Method Not Allowed");
+                    }
+                } else if (pathSegments.length == 3) {
+                    String tenant = pathSegments[1];
+                    String namespace = pathSegments[2];
+                    HttpMethod method = req.method();
+                    if (method.equals(HttpMethod.POST)) {
+                        pulsarEngine.createNamespace(tenant, namespace);
+                        req.response().setStatusCode(201).end("Namespace created");
+                    } else if (method.equals(HttpMethod.DELETE)) {
+                        pulsarEngine.deleteNamespace(tenant, namespace);
+                        req.response().setStatusCode(204).end();
+                    } else {
+                        req.response().setStatusCode(405).end("Method Not Allowed");
+                    }
+                } else {
+                    req.response().setStatusCode(404).end("Not Found");
+                }
+            } if ("persistent".equals(pathSegments[0])) {
+                if (pathSegments.length >= 4) {
+                    String tenant = pathSegments[1];
+                    String namespace = pathSegments[2];
+                    String topic = pathSegments[3];
+                    HttpMethod method = req.method();
+                    if ("partitions".equals(pathSegments[pathSegments.length - 1])) {
+                        if (method.equals(HttpMethod.PUT)) {
+                            // Create partitioned topic
+                            req.bodyHandler(buffer -> {
+                                int numPartitions = buffer.toJsonObject().getInteger("numPartitions");
+                                pulsarEngine.createPartitionedTopic(tenant, namespace, topic, numPartitions);
+                                req.response().setStatusCode(204).end();
+                            });
+                        } else if (method.equals(HttpMethod.DELETE)) {
+                            // Delete partitioned topic
+                            pulsarEngine.deletePartitionedTopic(tenant, namespace, topic);
+                            req.response().setStatusCode(204).end();
+                        } else if (method.equals(HttpMethod.GET)) {
+                            // Get partitioned topic metadata
+                            PartitionedTopicInfo info = pulsarEngine.getPartitionedTopicInfo(tenant, namespace, topic);
+                            if (info != null) {
+                                req.response().setStatusCode(200).end(Json.encode(info));
+                            } else {
+                                req.response().setStatusCode(404).end("Partitioned topic not found");
+                            }
+                        } else {
+                            req.response().setStatusCode(405).end("Method Not Allowed");
+                        }
+                    } else {
+                        req.response().setStatusCode(404).end("Not Found");
+                    }
+                } else {
+                    req.response().setStatusCode(404).end("Not Found");
+                }
+            } else {
+                req.response().setStatusCode(404).end("Not Found");
+            }
+        });
+        httpServer.listen(httpPort, res -> {
+            if (res.succeeded()) {
+                log.info("Embedded Pulsar HTTP server started on port {}", httpPort);
+            } else {
+                log.error("Failed to start Embedded Pulsar HTTP server", res.cause());
+            }
+        });
     }
 
     public void close() throws Exception {
-        this.pulsarStandalone.close();
+        if (netServer != null) {
+            netServer.close();
+        }
+        if (httpServer != null) {
+            httpServer.close();
+        }
     }
 }
