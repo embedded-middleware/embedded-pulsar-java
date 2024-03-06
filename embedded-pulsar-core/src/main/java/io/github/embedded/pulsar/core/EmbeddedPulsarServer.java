@@ -3,10 +3,12 @@ package io.github.embedded.pulsar.core;
 import io.github.embedded.pulsar.core.module.PartitionedTopicInfo;
 import io.github.embedded.pulsar.core.module.TenantInfo;
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.json.Json;
 import io.vertx.core.net.NetServer;
+import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.BodyHandler;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
@@ -61,106 +63,24 @@ public class EmbeddedPulsarServer {
         });
 
         httpServer = vertx.createHttpServer();
-        httpServer.requestHandler(req -> {
-            String[] pathSegments = req.path().substring(1).split("/");
+        Router router = Router.router(vertx);
+        router.route().handler(BodyHandler.create());
 
-            if (pathSegments.length > 0 && "tenants".equals(pathSegments[0])) {
-                if (pathSegments.length == 1) {
-                    if (req.method() == HttpMethod.GET) {
-                        req.response().setStatusCode(200).end(Json.encode(pulsarEngine.getTenants()));
-                    } else {
-                        req.response().setStatusCode(405).end("Method Not Allowed");
-                    }
-                }
-                else if (pathSegments.length == 2) {
-                    String tenant = pathSegments[1];
-                    HttpMethod method = req.method();
-                    if (method.equals(HttpMethod.POST)) {
-                        req.bodyHandler(buffer -> {
-                            TenantInfo tenantInfo = Json.decodeValue(buffer, TenantInfo.class);
-                            pulsarEngine.createTenant(tenant, tenantInfo);
-                            req.response().setStatusCode(201).end("Tenant created");
-                        });
-                    } else if (method.equals(HttpMethod.DELETE)) {
-                        pulsarEngine.deleteTenant(tenant);
-                        req.response().setStatusCode(204).end();
-                    } else if (method.equals(HttpMethod.GET)) {
-                        TenantInfo tenantInfo = pulsarEngine.getTenantInfo(tenant);
-                        if (tenantInfo != null) {
-                            req.response().setStatusCode(200).end(Json.encode(tenantInfo));
-                        } else {
-                            req.response().setStatusCode(404).end("Tenant not found");
-                        }
-                    } else {
-                        req.response().setStatusCode(405).end("Method Not Allowed");
-                    }
-                } else {
-                    req.response().setStatusCode(404).end("Not Found");
-                }
-            } else if ("namespaces".equals(pathSegments[0])) {
-                if (pathSegments.length == 2) {
-                    String tenant = pathSegments[1];
-                    if (req.method() == HttpMethod.GET) {
-                        req.response().setStatusCode(200).end(Json.encode(pulsarEngine.getTenantNamespaces(tenant)));
-                    } else {
-                        req.response().setStatusCode(405).end("Method Not Allowed");
-                    }
-                } else if (pathSegments.length == 3) {
-                    String tenant = pathSegments[1];
-                    String namespace = pathSegments[2];
-                    HttpMethod method = req.method();
-                    if (method.equals(HttpMethod.POST)) {
-                        pulsarEngine.createNamespace(tenant, namespace);
-                        req.response().setStatusCode(201).end("Namespace created");
-                    } else if (method.equals(HttpMethod.DELETE)) {
-                        pulsarEngine.deleteNamespace(tenant, namespace);
-                        req.response().setStatusCode(204).end();
-                    } else {
-                        req.response().setStatusCode(405).end("Method Not Allowed");
-                    }
-                } else {
-                    req.response().setStatusCode(404).end("Not Found");
-                }
-            } if ("persistent".equals(pathSegments[0])) {
-                if (pathSegments.length >= 4) {
-                    String tenant = pathSegments[1];
-                    String namespace = pathSegments[2];
-                    String topic = pathSegments[3];
-                    HttpMethod method = req.method();
-                    if ("partitions".equals(pathSegments[pathSegments.length - 1])) {
-                        if (method.equals(HttpMethod.PUT)) {
-                            // Create partitioned topic
-                            req.bodyHandler(buffer -> {
-                                int numPartitions = buffer.toJsonObject().getInteger("numPartitions");
-                                pulsarEngine.createPartitionedTopic(tenant, namespace, topic, numPartitions);
-                                req.response().setStatusCode(204).end();
-                            });
-                        } else if (method.equals(HttpMethod.DELETE)) {
-                            // Delete partitioned topic
-                            pulsarEngine.deletePartitionedTopic(tenant, namespace, topic);
-                            req.response().setStatusCode(204).end();
-                        } else if (method.equals(HttpMethod.GET)) {
-                            // Get partitioned topic metadata
-                            PartitionedTopicInfo info = pulsarEngine.getPartitionedTopicInfo(tenant, namespace, topic);
-                            if (info != null) {
-                                req.response().setStatusCode(200).end(Json.encode(info));
-                            } else {
-                                req.response().setStatusCode(404).end("Partitioned topic not found");
-                            }
-                        } else {
-                            req.response().setStatusCode(405).end("Method Not Allowed");
-                        }
-                    } else {
-                        req.response().setStatusCode(404).end("Not Found");
-                    }
-                } else {
-                    req.response().setStatusCode(404).end("Not Found");
-                }
-            } else {
-                req.response().setStatusCode(404).end("Not Found");
-            }
-        });
-        httpServer.listen(httpPort, res -> {
+        router.put("/admin/v2/tenants/:tenant").handler(this::handleCreateTenant);
+        router.delete("/admin/v2/tenants/:tenant").handler(this::handleDeleteTenant);
+        router.get("/admin/v2/tenants").handler(this::handleGetTenants);
+        router.put("/admin/v2/tenants/:tenant/namespaces/:namespace").handler(this::handleCreateNamespace);
+        router.delete("/admin/v2/tenants/:tenant/namespaces/:namespace").handler(this::handleDeleteNamespace);
+        router.get("/admin/v2/tenants/:tenant/namespaces").handler(this::handleGetTenantNamespaces);
+        router.put("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
+                .handler(this::handleCreatePartitionedTopic);
+        router.get("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
+                .handler(this::handleGetPartitionedTopicInfo);
+        router.delete("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
+                .handler(this::handleDeletePartitionedTopic);
+
+
+        httpServer.requestHandler(router).listen(httpPort, res -> {
             if (res.succeeded()) {
                 log.info("Embedded Pulsar HTTP server started on port {}", httpPort);
             } else {
@@ -168,6 +88,72 @@ public class EmbeddedPulsarServer {
             }
         });
     }
+
+    private void handleCreateTenant(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        TenantInfo tenantInfo = Json.decodeValue(context.body().asString(), TenantInfo.class);
+        pulsarEngine.createTenant(tenant, tenantInfo);
+        context.response().setStatusCode(204).end("Tenant created");
+    }
+
+    private void handleDeleteTenant(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        pulsarEngine.deleteTenant(tenant);
+        context.response().setStatusCode(204).end();
+    }
+
+    private void handleGetTenants(RoutingContext context) {
+        context.response().setStatusCode(200).end(Json.encode(pulsarEngine.getTenants()));
+    }
+
+    private void handleGetTenantNamespaces(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        context.response().setStatusCode(200).end(Json.encode(pulsarEngine.getTenantNamespaces(tenant)));
+    }
+
+    private void handleCreateNamespace(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        String namespace = context.pathParam("namespace");
+        pulsarEngine.createNamespace(tenant, namespace);
+        context.response().setStatusCode(204).end("Namespace created");
+    }
+
+    private void handleDeleteNamespace(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        String namespace = context.pathParam("namespace");
+        pulsarEngine.deleteNamespace(tenant, namespace);
+        context.response().setStatusCode(204).end();
+    }
+
+    private void handleCreatePartitionedTopic(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        String namespace = context.pathParam("namespace");
+        String topic = context.pathParam("topic");
+        int numPartitions = Integer.parseInt(context.body().asString());
+        pulsarEngine.createPartitionedTopic(tenant, namespace, topic, numPartitions);
+        context.response().setStatusCode(204).end("Partitioned topic created");
+    }
+
+    private void handleDeletePartitionedTopic(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        String namespace = context.pathParam("namespace");
+        String topic = context.pathParam("topic");
+        pulsarEngine.deletePartitionedTopic(tenant, namespace, topic);
+        context.response().setStatusCode(204).end();
+    }
+
+    private void handleGetPartitionedTopicInfo(RoutingContext context) {
+        String tenant = context.pathParam("tenant");
+        String namespace = context.pathParam("namespace");
+        String topic = context.pathParam("topic");
+        PartitionedTopicInfo info = pulsarEngine.getPartitionedTopicInfo(tenant, namespace, topic);
+        if (info != null) {
+            context.response().setStatusCode(200).end(Json.encode(info));
+        } else {
+            context.response().setStatusCode(404).end("Partitioned topic not found");
+        }
+    }
+
 
     public void close() throws Exception {
         if (netServer != null) {

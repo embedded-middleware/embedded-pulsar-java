@@ -13,9 +13,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PulsarEngine {
     private final ConcurrentHashMap<String, TenantInfo> tenants = new ConcurrentHashMap<>();
 
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, NamespaceInfo>> namespaces = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, NamespaceInfo>> namespaces =
+            new ConcurrentHashMap<>();
 
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>>> partitionedTopics = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String,
+            ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>>> partitionedTopics =
+            new ConcurrentHashMap<>();
 
     public void createTenant(String tenant, TenantInfo tenantInfo) {
         tenants.put(tenant, tenantInfo);
@@ -60,7 +63,8 @@ public class PulsarEngine {
     }
 
     public void deletePartitionedTopic(String tenant, String namespace, String topic) {
-        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces = partitionedTopics.get(tenant);
+        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces =
+                partitionedTopics.get(tenant);
         if (tenantNamespaces != null) {
             ConcurrentHashMap<String, PartitionedTopicInfo> namespaceTopics = tenantNamespaces.get(namespace);
             if (namespaceTopics != null) {
@@ -70,7 +74,8 @@ public class PulsarEngine {
     }
 
     public List<String> getPartitionedTopics(String tenant, String namespace) {
-        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces = partitionedTopics.get(tenant);
+        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces =
+                partitionedTopics.get(tenant);
         if (tenantNamespaces != null) {
             ConcurrentHashMap<String, PartitionedTopicInfo> namespaceTopics = tenantNamespaces.get(namespace);
             return namespaceTopics == null ? Collections.emptyList() : new ArrayList<>(namespaceTopics.keySet());
@@ -79,7 +84,8 @@ public class PulsarEngine {
     }
 
     public PartitionedTopicInfo getPartitionedTopicInfo(String tenant, String namespace, String topic) {
-        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces = partitionedTopics.get(tenant);
+        ConcurrentHashMap<String, ConcurrentHashMap<String, PartitionedTopicInfo>> tenantNamespaces =
+                partitionedTopics.get(tenant);
         if (tenantNamespaces != null) {
             ConcurrentHashMap<String, PartitionedTopicInfo> namespaceTopics = tenantNamespaces.get(namespace);
             if (namespaceTopics != null) {
