@@ -69,15 +69,16 @@ public class EmbeddedPulsarServer {
         router.put("/admin/v2/tenants/:tenant").handler(this::handleCreateTenant);
         router.delete("/admin/v2/tenants/:tenant").handler(this::handleDeleteTenant);
         router.get("/admin/v2/tenants").handler(this::handleGetTenants);
-        router.put("/admin/v2/tenants/:tenant/namespaces/:namespace").handler(this::handleCreateNamespace);
-        router.delete("/admin/v2/tenants/:tenant/namespaces/:namespace").handler(this::handleDeleteNamespace);
-        router.get("/admin/v2/tenants/:tenant/namespaces").handler(this::handleGetTenantNamespaces);
+        router.put("/admin/v2/namespaces/:tenant/:namespace").handler(this::handleCreateNamespace);
+        router.delete("/admin/v2/namespaces/:tenant/:namespace").handler(this::handleDeleteNamespace);
+        router.get("/admin/v2/namespaces/:tenant").handler(this::handleGetTenantNamespaces);
         router.put("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
                 .handler(this::handleCreatePartitionedTopic);
         router.get("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
                 .handler(this::handleGetPartitionedTopicInfo);
         router.delete("/admin/v2/persistent/:tenant/:namespace/:topic/partitions")
                 .handler(this::handleDeletePartitionedTopic);
+
 
 
         httpServer.requestHandler(router).listen(httpPort, res -> {
